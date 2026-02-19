@@ -1,0 +1,76 @@
+{% extends "sensors/base.html" %}
+
+{% block title %}Sensor Dashboard — Live Monitoring{% endblock %}
+
+{% block content %}
+<!-- Stats Cards Section -->
+<section class="mb-8">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-slate-300">Sensor Statistics</h2>
+        <span class="htmx-indicator text-xs text-indigo-400">
+            <svg class="w-4 h-4 inline animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+            </svg>
+            Refreshing…
+        </span>
+    </div>
+    <div id="stats-cards" hx-get="{% url 'stats_cards' %}" hx-trigger="load, every 5s"
+        hx-swap="innerHTML transition:true" hx-indicator=".htmx-indicator">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {% for i in "123" %}
+            <div class="rounded-xl border border-slate-800/60 bg-slate-900/50 p-6 animate-pulse">
+                <div class="h-4 bg-slate-800 rounded w-24 mb-3"></div>
+                <div class="h-8 bg-slate-800 rounded w-16"></div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- Readings Table Section -->
+<section>
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-slate-300">Recent Readings</h2>
+        <div class="flex items-center gap-3">
+            <!-- Sensor filter buttons -->
+            <div class="flex rounded-lg border border-slate-700/60 overflow-hidden text-sm">
+                <button hx-get="{% url 'sensor_table' %}" hx-target="#sensor-table" hx-swap="innerHTML transition:true"
+                    class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors">
+                    All
+                </button>
+                <button hx-get="{% url 'sensor_table' %}?sensor=temperature" hx-target="#sensor-table"
+                    hx-swap="innerHTML transition:true"
+                    class="px-3 py-1.5 bg-slate-800/50 hover:bg-slate-700 text-slate-400 transition-colors border-l border-slate-700/60">
+                    🌡️ Temp
+                </button>
+                <button hx-get="{% url 'sensor_table' %}?sensor=humidity" hx-target="#sensor-table"
+                    hx-swap="innerHTML transition:true"
+                    class="px-3 py-1.5 bg-slate-800/50 hover:bg-slate-700 text-slate-400 transition-colors border-l border-slate-700/60">
+                    💧 Humidity
+                </button>
+                <button hx-get="{% url 'sensor_table' %}?sensor=pressure" hx-target="#sensor-table"
+                    hx-swap="innerHTML transition:true"
+                    class="px-3 py-1.5 bg-slate-800/50 hover:bg-slate-700 text-slate-400 transition-colors border-l border-slate-700/60">
+                    🔵 Pressure
+                </button>
+            </div>
+        </div>
+    </div>
+    <div id="sensor-table" hx-get="{% url 'sensor_table' %}" hx-trigger="load, every 5s"
+        hx-swap="innerHTML transition:true">
+        <!-- Skeleton loader -->
+        <div class="rounded-xl border border-slate-800/60 bg-slate-900/50 overflow-hidden">
+            <div class="p-4 space-y-3">
+                {% for i in "12345" %}
+                <div class="flex gap-4 animate-pulse">
+                    <div class="h-4 bg-slate-800 rounded w-28"></div>
+                    <div class="h-4 bg-slate-800 rounded w-16"></div>
+                    <div class="h-4 bg-slate-800 rounded w-40 ml-auto"></div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
