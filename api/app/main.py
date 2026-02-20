@@ -58,8 +58,8 @@ app.add_middleware(
 def _verify_api_key(x_api_key: str = Header(default="")):
     """Dependency to verify API key on destructive endpoints."""
     if not API_KEY:
-        return  # No key configured — allow (dev mode)
-    if x_api_key != API_KEY:
+        raise HTTPException(status_code=500, detail="API_KEY not configured on server")
+    if not x_api_key or x_api_key != API_KEY:
         raise HTTPException(status_code=403, detail="Invalid API key")
 
 
@@ -81,7 +81,6 @@ async def create_reading(payload: SensorReadingCreate):
         session.add(reading)
         await session.commit()
         await session.refresh(reading)
-        await app.state.redis.delete("stats_cache")
         return reading
 
 
@@ -143,5 +142,4 @@ async def get_stats():
 async def seed(x_api_key: str = Header(default="")):
     _verify_api_key(x_api_key)
     count = await seed_data()
-    await app.state.redis.delete("stats_cache")
     return {"seeded": count}
