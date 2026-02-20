@@ -21,6 +21,8 @@ STATS_CACHE_TTL = 30  # seconds
 async def lifespan(app: FastAPI):
     # --- Startup ---
     async with engine.begin() as conn:
+        # Prevent concurrent DDL execution race conditions across multiple Uvicorn workers
+        await conn.execute(text("SELECT pg_advisory_xact_lock(1337)"))
         await conn.run_sync(Base.metadata.create_all)
         await conn.execute(
             text(
@@ -73,15 +75,19 @@ async def health():
 @app.post("/api/readings", response_model=SensorReadingOut, status_code=201)
 async def create_reading(payload: SensorReadingCreate):
     async with async_session() as session:
-        reading = SensorReading(
-            sensor_name=payload.sensor_name,
-            value=payload.value,
-            recorded_at=payload.recorded_at,
+        # Optimization: use insert().returning() to save a SELECT round-trip
+        stmt = (
+            SensorReading.__table__.insert()
+            .values(
+                sensor_name=payload.sensor_name,
+                value=payload.value,
+                recorded_at=payload.recorded_at or func.now(),
+            )
+            .returning(SensorReading)
         )
-        session.add(reading)
+        result = await session.execute(stmt)
         await session.commit()
-        await session.refresh(reading)
-        return reading
+        return result.scalar_one()
 
 
 @app.get("/api/readings", response_model=list[SensorReadingOut])
@@ -99,11 +105,15 @@ async def list_readings(
 
 
 # ---------- Stats ----------
-@app.get("/api/stats", response_model=list[StatsOut])
+import orjson
+from fastapi.responses import Response
+
+@app.get("/api/stats")
 async def get_stats():
     cached = await app.state.redis.get("stats_cache")
     if cached:
-        return json.loads(cached)
+        # Optimization: return raw json directly, bypassing Pydantic validation
+        return Response(content=cached, media_type="application/json")
 
     async with async_session() as session:
         stmt = (
@@ -131,7 +141,7 @@ async def get_stats():
 
     await app.state.redis.set(
         "stats_cache",
-        json.dumps([s.model_dump(mode="json") for s in rows]),
+        orjson.dumps([s.model_dump(mode="json") for s in rows]),
         ex=STATS_CACHE_TTL,
     )
     return rows
@@ -143,3 +153,13 @@ async def seed(x_api_key: str = Header(default="")):
     _verify_api_key(x_api_key)
     count = await seed_data()
     return {"seeded": count}
+
+
+@app.delete("/api/readings", status_code=204)
+async def clear_readings(x_api_key: str = Header(default="")):
+    """Truncates all sensor readings and clears the cache."""
+    _verify_api_key(x_api_key)
+    async with engine.begin() as conn:
+        await conn.execute(text("TRUNCATE TABLE sensor_readings RESTART IDENTITY"))
+    await app.state.redis.delete("stats_cache")
+    return Response(status_code=204)

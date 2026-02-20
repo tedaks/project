@@ -7,8 +7,10 @@ from django.views.decorators.csrf import csrf_exempt
 API = settings.FASTAPI_URL
 API_KEY = getattr(settings, "API_KEY", "")
 
-# Reuse a single httpx client with connection pooling
-_client = httpx.AsyncClient(base_url=API, timeout=5.0)
+_LIMITS = httpx.Limits(max_keepalive_connections=50, max_connections=200)
+
+def create_client() -> httpx.AsyncClient:
+    return httpx.AsyncClient(base_url=API, timeout=5.0, limits=_LIMITS)
 
 
 async def dashboard(request):
@@ -23,24 +25,26 @@ async def sensor_table(request):
     if sensor:
         params["sensor"] = sensor
 
-    try:
-        resp = await _client.get("/api/readings", params=params)
-        resp.raise_for_status()
-        readings = resp.json()
-    except httpx.HTTPError:
-        readings = []
+    async with create_client() as client:
+        try:
+            resp = await client.get("/api/readings", params=params)
+            resp.raise_for_status()
+            readings = resp.json()
+        except httpx.HTTPError:
+            readings = []
 
     return render(request, "sensors/partials/sensor_table.html", {"readings": readings, "sensor": sensor})
 
 
 async def stats_cards(request):
     """HTMX partial: fetch stats from FastAPI and render summary cards."""
-    try:
-        resp = await _client.get("/api/stats")
-        resp.raise_for_status()
-        stats = resp.json()
-    except httpx.HTTPError:
-        stats = []
+    async with create_client() as client:
+        try:
+            resp = await client.get("/api/stats")
+            resp.raise_for_status()
+            stats = resp.json()
+        except httpx.HTTPError:
+            stats = []
 
     return render(request, "sensors/partials/stats_cards.html", {"stats": stats})
 
@@ -48,10 +52,25 @@ async def stats_cards(request):
 @csrf_exempt
 async def seed_data(request):
     """Trigger seed endpoint on FastAPI, then return 200 for HTMX or redirect."""
-    try:
-        await _client.post("/api/seed", headers={"X-API-Key": API_KEY}, timeout=10.0)
-    except httpx.HTTPError:
-        pass
+    async with create_client() as client:
+        try:
+            await client.post("/api/seed", headers={"X-API-Key": API_KEY}, timeout=10.0)
+        except httpx.HTTPError:
+            pass
+
+    if request.headers.get("HX-Request"):
+        return HttpResponse(status=200)
+    return redirect("dashboard")
+
+
+@csrf_exempt
+async def clear_data(request):
+    """Trigger delete endpoint on FastAPI to clear all data, then return 200 for HTMX or redirect."""
+    async with create_client() as client:
+        try:
+            await client.delete("/api/readings", headers={"X-API-Key": API_KEY}, timeout=10.0)
+        except httpx.HTTPError:
+            pass
 
     if request.headers.get("HX-Request"):
         return HttpResponse(status=200)

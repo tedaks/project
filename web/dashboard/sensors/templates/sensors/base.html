@@ -24,6 +24,15 @@
             }
         }
     </script>
+    <script>
+        // Prevent FOUC by applying theme immediately on load
+        const theme = localStorage.getItem('color-theme') || 'system';
+        if (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
 
     <!-- HTMX -->
     <script src="https://unpkg.com/htmx.org@2.0.2"></script>
@@ -76,9 +85,10 @@
     </style>
 </head>
 
-<body class="h-full bg-slate-950 text-slate-200 dark">
+<body class="h-full bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-200 transition-colors duration-200">
     <!-- Navbar -->
-    <nav class="border-b border-slate-800/60 bg-slate-950/80 backdrop-blur-xl sticky top-0 z-50">
+    <nav
+        class="border-b border-slate-200 bg-white/80 dark:border-slate-800/60 dark:bg-slate-950/80 backdrop-blur-xl sticky top-0 z-50 transition-colors duration-200">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
                 <div class="flex items-center gap-3">
@@ -95,7 +105,7 @@
                     </h1>
                 </div>
                 <div class="flex items-center gap-4">
-                    <span class="flex items-center gap-2 text-xs text-slate-400">
+                    <span class="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                         <span class="relative flex h-2 w-2">
                             <span
                                 class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -103,6 +113,19 @@
                         </span>
                         Live
                     </span>
+                    <button hx-post="{% url 'clear_data' %}" hx-swap="none"
+                        hx-on::before-request="this.innerHTML='⏳ Clearing…'; this.disabled=true"
+                        hx-on::after-request="this.innerHTML='✅ Cleared!'; this.disabled=false; htmx.trigger('#stats-cards','load'); htmx.trigger('#sensor-table','load'); setTimeout(()=>{this.innerHTML='<svg class=&quot;w-4 h-4 inline mr-1&quot; fill=&quot;none&quot; stroke=&quot;currentColor&quot; viewBox=&quot;0 0 24 24&quot;><path stroke-linecap=&quot;round&quot; stroke-linejoin=&quot;round&quot; stroke-width=&quot;2&quot; d=&quot;M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16&quot;/></svg> Clear Data'},1500)"
+                        class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg
+                              bg-rose-600/80 hover:bg-rose-500 text-white border border-rose-500/50
+                              transition-all duration-200 hover:shadow-lg hover:shadow-rose-500/25
+                              disabled:opacity-50 disabled:cursor-wait">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Clear Data
+                    </button>
                     <button hx-post="{% url 'seed_data' %}" hx-swap="none"
                         hx-on::before-request="this.innerHTML='⏳ Seeding…'; this.disabled=true"
                         hx-on::after-request="this.innerHTML='✅ Seeded!'; this.disabled=false; htmx.trigger('#stats-cards','load'); htmx.trigger('#sensor-table','load'); setTimeout(()=>{this.innerHTML='<svg class=&quot;w-4 h-4 inline mr-1&quot; fill=&quot;none&quot; stroke=&quot;currentColor&quot; viewBox=&quot;0 0 24 24&quot;><path stroke-linecap=&quot;round&quot; stroke-linejoin=&quot;round&quot; stroke-width=&quot;2&quot; d=&quot;M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15&quot;/></svg> Seed Data'},1500)"
@@ -116,6 +139,12 @@
                         </svg>
                         Seed Data
                     </button>
+                    <select id="theme-select"
+                        class="bg-white border border-slate-300 text-slate-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 px-3 dark:bg-slate-800 dark:border-slate-600 dark:placeholder-slate-400 dark:text-slate-200 dark:focus:ring-indigo-500 dark:focus:border-indigo-500 transition-colors duration-200 font-medium cursor-pointer">
+                        <option value="system">💻 System</option>
+                        <option value="light">☀️ Light</option>
+                        <option value="dark">🌙 Dark</option>
+                    </select>
                 </div>
             </div>
         </div>
@@ -127,13 +156,45 @@
     </main>
 
     <!-- Footer -->
-    <footer class="border-t border-slate-800/60 mt-12">
+    <footer class="border-t border-slate-200 dark:border-slate-800/60 mt-12 transition-colors duration-200">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
             <p class="text-center text-xs text-slate-500">
                 Django + FastAPI + HTMX + Tailwind CSS + TimescaleDB + PgBouncer + Redis
             </p>
         </div>
     </footer>
+    </footer>
+
+    <!-- Theme Logic -->
+    <script>
+        const themeSelect = document.getElementById('theme-select');
+        const applyTheme = (val) => {
+            if (val === 'dark' || (val === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        };
+
+        const currentTheme = localStorage.getItem('color-theme') || 'system';
+        themeSelect.value = currentTheme;
+
+        themeSelect.addEventListener('change', (e) => {
+            const val = e.target.value;
+            if (val === 'system') {
+                localStorage.removeItem('color-theme');
+            } else {
+                localStorage.setItem('color-theme', val);
+            }
+            applyTheme(val);
+        });
+
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+            if (!localStorage.getItem('color-theme')) {
+                applyTheme('system');
+            }
+        });
+    </script>
 </body>
 
 </html>
