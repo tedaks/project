@@ -1,4 +1,11 @@
 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    {% if error %}
+    <div
+        class="col-span-3 px-6 py-4 text-sm text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 rounded-xl border border-rose-200 dark:border-rose-800/40">
+        ⚠️ {{ error }}
+    </div>
+    {% endif %}
+
     {% for stat in stats %}
     <div class="rounded-xl border border-slate-200 hover:border-slate-300 bg-white dark:border-slate-800/60 dark:bg-slate-900/50 p-6 card-glow
                 dark:hover:border-slate-700/80 transition-all duration-300 group shadow-sm dark:shadow-none">
@@ -40,9 +47,11 @@
         </div>
     </div>
     {% empty %}
+    {% if not error %}
     <div class="col-span-3 text-center py-12 text-slate-500">
         <p class="text-lg mb-2">No data yet</p>
         <p class="text-sm">Click <strong>Seed Data</strong> to generate sample readings.</p>
     </div>
+    {% endif %}
     {% endfor %}
 </div>

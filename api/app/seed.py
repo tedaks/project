@@ -1,7 +1,7 @@
 import datetime
 import random
 
-from sqlalchemy import insert, text
+from sqlalchemy import insert
 
 from .database import async_session
 from .models import SensorReading
@@ -10,7 +10,13 @@ SENSOR_NAMES = ["temperature", "humidity", "pressure"]
 
 
 async def seed_data(count: int = 100) -> int:
-    """Insert random sensor readings spread over the last 24 hours."""
+    """
+    Insert random sensor readings spread over the last 24 hours.
+
+    This function APPENDS to existing data — it does NOT truncate first.
+    Use DELETE /api/readings to clear the table before seeding if a clean
+    slate is desired.
+    """
     now = datetime.datetime.now(tz=datetime.timezone.utc)
     ranges = {
         "temperature": (15.0, 35.0),
@@ -31,9 +37,8 @@ async def seed_data(count: int = 100) -> int:
         )
 
     async with async_session() as session:
-        await session.execute(text("TRUNCATE sensor_readings"))
-        # Bulk insert — single INSERT with multiple rows
-        await session.execute(insert(SensorReading), rows)
-        await session.commit()
+        async with session.begin():
+            # Bulk insert — single INSERT with multiple rows, inside explicit transaction
+            await session.execute(insert(SensorReading), rows)
 
     return len(rows)

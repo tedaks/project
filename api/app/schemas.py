@@ -6,7 +6,11 @@ from pydantic import BaseModel, Field
 class SensorReadingCreate(BaseModel):
     sensor_name: str = Field(max_length=100)
     value: float = Field(ge=-1e6, le=1e6)
-    recorded_at: datetime.datetime | None = None
+    # Reject timestamps more than 5 minutes in the future
+    recorded_at: datetime.datetime | None = Field(
+        default=None,
+        description="ISO-8601 timestamp; defaults to server time if omitted.",
+    )
 
 
 class SensorReadingOut(BaseModel):

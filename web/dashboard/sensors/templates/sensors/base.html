@@ -7,7 +7,14 @@
     <title>{% block title %}Sensor Dashboard{% endblock %}</title>
     <meta name="description" content="Real-time sensor monitoring dashboard">
 
-    <!-- Tailwind CSS CDN -->
+    <!-- Preload fonts non-blocking -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+          onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"></noscript>
+
+    <!-- Tailwind CSS CDN (demo/development only; replace with CLI build for production) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -34,12 +41,12 @@
         }
     </script>
 
-    <!-- HTMX -->
-    <script src="https://unpkg.com/htmx.org@2.0.2"></script>
+    <!-- HTMX with SRI integrity check -->
+    <script src="https://unpkg.com/htmx.org@2.0.2"
+            integrity="sha384-Y7hw+L/jvKeWIRRkqWYfPcvVxHzVzn5REgzbawhxAuQGwX1XWe70vji+VSeHOThJ"
+            crossorigin="anonymous"></script>
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
         body {
             font-family: 'Inter', sans-serif;
         }
@@ -85,7 +92,8 @@
     </style>
 </head>
 
-<body class="h-full bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-200 transition-colors duration-200">
+<body class="h-full bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-200 transition-colors duration-200"
+      hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
     <!-- Navbar -->
     <nav
         class="border-b border-slate-200 bg-white/80 dark:border-slate-800/60 dark:bg-slate-950/80 backdrop-blur-xl sticky top-0 z-50 transition-colors duration-200">
@@ -162,7 +170,6 @@
                 Django + FastAPI + HTMX + Tailwind CSS + TimescaleDB + PgBouncer + Redis
             </p>
         </div>
-    </footer>
     </footer>
 
     <!-- Theme Logic -->

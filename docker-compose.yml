@@ -1,6 +1,6 @@
 services:
   timescaledb:
-    image: timescale/timescaledb:latest-pg16
+    image: timescale/timescaledb:2.25.2-pg16
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -18,7 +18,7 @@ services:
       retries: 10
 
   pgbouncer:
-    image: edoburu/pgbouncer:latest
+    image: edoburu/pgbouncer:v1.25.1-p0
     restart: unless-stopped
     depends_on:
       timescaledb:
@@ -64,17 +64,25 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       API_KEY: ${API_KEY}
+      CORS_ORIGIN: http://localhost:8000
     ports:
       - "8001:8001"
     networks:
       - backend
+    healthcheck:
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/api/health')\"" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   web:
     build: ./web
     restart: unless-stopped
     depends_on:
-      - api
-      - redis
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       FASTAPI_URL: http://api:8001
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
@@ -86,6 +94,11 @@ services:
       - "8000:8000"
     networks:
       - backend
+    healthcheck:
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/')\"" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
 networks:
   backend:

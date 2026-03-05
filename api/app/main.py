@@ -1,10 +1,15 @@
-import json
+import hmac
 import os
 from contextlib import asynccontextmanager
 
+import orjson
 import redis.asyncio as aioredis
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from sqlalchemy import func, select, text
 
 from .database import async_session, engine
@@ -16,12 +21,15 @@ REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
 API_KEY = os.environ.get("API_KEY", "")
 STATS_CACHE_TTL = 30  # seconds
 
+# Rate limiter — keyed by remote IP
+limiter = Limiter(key_func=get_remote_address)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- Startup ---
     async with engine.begin() as conn:
-        # Prevent concurrent DDL execution race conditions across multiple Uvicorn workers
+        # Prevent concurrent DDL race conditions across multiple Uvicorn workers
         await conn.execute(text("SELECT pg_advisory_xact_lock(1337)"))
         await conn.run_sync(Base.metadata.create_all)
         await conn.execute(
@@ -46,22 +54,27 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Attach rate limiter state and its exception handler
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # CORS — only allow the Django frontend origin
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         os.environ.get("CORS_ORIGIN", "http://localhost:8000"),
     ],
-    allow_methods=["GET", "POST"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Content-Type", "X-API-Key"],
 )
 
 
-def _verify_api_key(x_api_key: str = Header(default="")):
-    """Dependency to verify API key on destructive endpoints."""
+def _verify_api_key(x_api_key: str = Header(default="")) -> None:
+    """FastAPI dependency to verify API key on protected endpoints."""
     if not API_KEY:
         raise HTTPException(status_code=500, detail="API_KEY not configured on server")
-    if not x_api_key or x_api_key != API_KEY:
+    # Constant-time comparison to prevent timing attacks
+    if not x_api_key or not hmac.compare_digest(x_api_key, API_KEY):
         raise HTTPException(status_code=403, detail="Invalid API key")
 
 
@@ -72,10 +85,16 @@ async def health():
 
 
 # ---------- Readings ----------
-@app.post("/api/readings", response_model=SensorReadingOut, status_code=201)
-async def create_reading(payload: SensorReadingCreate):
+@app.post(
+    "/api/readings",
+    response_model=SensorReadingOut,
+    status_code=201,
+    dependencies=[Depends(_verify_api_key)],
+)
+@limiter.limit("60/minute")
+async def create_reading(request: Request, payload: SensorReadingCreate):
     async with async_session() as session:
-        # Optimization: use insert().returning() to save a SELECT round-trip
+        # Optimization: insert().returning() saves a SELECT round-trip
         stmt = (
             SensorReading.__table__.insert()
             .values(
@@ -90,29 +109,46 @@ async def create_reading(payload: SensorReadingCreate):
         return result.scalar_one()
 
 
-@app.get("/api/readings", response_model=list[SensorReadingOut])
+@app.get("/api/readings")
+@limiter.limit("120/minute")
 async def list_readings(
+    request: Request,
     sensor: str | None = Query(None, description="Filter by sensor name"),
     limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
 ):
     async with async_session() as session:
+        count_stmt = select(func.count()).select_from(SensorReading)
+        if sensor:
+            count_stmt = count_stmt.where(SensorReading.sensor_name == sensor)
+
         stmt = select(SensorReading).order_by(SensorReading.recorded_at.desc())
         if sensor:
             stmt = stmt.where(SensorReading.sensor_name == sensor)
-        stmt = stmt.limit(limit)
+        stmt = stmt.limit(limit).offset(offset)
+
+        total_result = await session.execute(count_stmt)
         result = await session.execute(stmt)
-        return result.scalars().all()
+
+        total = total_result.scalar_one()
+        rows = result.scalars().all()
+
+    envelope = {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "data": [SensorReadingOut.model_validate(r).model_dump(mode="json") for r in rows],
+    }
+    return Response(content=orjson.dumps(envelope), media_type="application/json")
 
 
 # ---------- Stats ----------
-import orjson
-from fastapi.responses import Response
-
 @app.get("/api/stats")
-async def get_stats():
+@limiter.limit("120/minute")
+async def get_stats(request: Request):
     cached = await app.state.redis.get("stats_cache")
     if cached:
-        # Optimization: return raw json directly, bypassing Pydantic validation
+        # Optimization: return raw JSON directly, bypassing Pydantic validation
         return Response(content=cached, media_type="application/json")
 
     async with async_session() as session:
@@ -139,26 +175,25 @@ async def get_stats():
             for r in result.all()
         ]
 
-    await app.state.redis.set(
-        "stats_cache",
-        orjson.dumps([s.model_dump(mode="json") for s in rows]),
-        ex=STATS_CACHE_TTL,
-    )
-    return rows
+    # Serialize once → store in Redis → return directly (no double serialization)
+    payload = orjson.dumps([s.model_dump(mode="json") for s in rows])
+    await app.state.redis.set("stats_cache", payload, ex=STATS_CACHE_TTL)
+    return Response(content=payload, media_type="application/json")
 
 
 # ---------- Seed (API-key protected) ----------
-@app.post("/api/seed")
-async def seed(x_api_key: str = Header(default="")):
-    _verify_api_key(x_api_key)
+@app.post("/api/seed", dependencies=[Depends(_verify_api_key)])
+@limiter.limit("10/minute")
+async def seed(request: Request):
     count = await seed_data()
     return {"seeded": count}
 
 
-@app.delete("/api/readings", status_code=204)
-async def clear_readings(x_api_key: str = Header(default="")):
-    """Truncates all sensor readings and clears the cache."""
-    _verify_api_key(x_api_key)
+# ---------- Clear (API-key protected) ----------
+@app.delete("/api/readings", status_code=204, dependencies=[Depends(_verify_api_key)])
+@limiter.limit("10/minute")
+async def clear_readings(request: Request):
+    """Truncates all sensor readings and clears the stats cache."""
     async with engine.begin() as conn:
         await conn.execute(text("TRUNCATE TABLE sensor_readings RESTART IDENTITY"))
     await app.state.redis.delete("stats_cache")

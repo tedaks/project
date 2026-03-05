@@ -19,4 +19,9 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "4", "--threads", "2", "--timeout", "30"]
+# Use UvicornWorker so Gunicorn can serve async Django ASGI views correctly.
+CMD ["gunicorn", "config.asgi:application", \
+     "--worker-class", "uvicorn.workers.UvicornWorker", \
+     "--bind", "0.0.0.0:8000", \
+     "--workers", "4", \
+     "--timeout", "30"]
