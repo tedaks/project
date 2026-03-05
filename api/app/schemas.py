@@ -1,6 +1,6 @@
 import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class SensorReadingCreate(BaseModel):
@@ -11,6 +11,19 @@ class SensorReadingCreate(BaseModel):
         default=None,
         description="ISO-8601 timestamp; defaults to server time if omitted.",
     )
+
+    @field_validator("recorded_at")
+    @classmethod
+    def validate_recorded_at(cls, value: datetime.datetime | None) -> datetime.datetime | None:
+        if value is None:
+            return value
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("recorded_at must be timezone-aware.")
+
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        if value > now_utc + datetime.timedelta(minutes=5):
+            raise ValueError("recorded_at cannot be more than 5 minutes in the future.")
+        return value
 
 
 class SensorReadingOut(BaseModel):

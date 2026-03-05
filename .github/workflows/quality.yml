@@ -1,0 +1,57 @@
+name: Quality Checks
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  api:
+    name: API Quality
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Syntax check
+        run: python -m compileall -q app
+
+  web:
+    name: Web Quality
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web/dashboard
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r ../requirements.txt
+
+      - name: Django system checks
+        env:
+          SECRET_KEY: ci-secret-key
+          DEBUG: "0"
+          ALLOWED_HOSTS: localhost
+          FASTAPI_URL: http://api:8001
+          API_KEY: ci-api-key
+          ENABLE_MUTATIONS: "0"
+        run: python manage.py check --deploy

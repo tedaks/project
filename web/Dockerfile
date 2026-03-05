@@ -11,7 +11,9 @@ COPY dashboard ./dashboard
 
 WORKDIR /app/dashboard
 
-RUN python manage.py collectstatic --noinput 2>/dev/null || true
+ARG SECRET_KEY=build-placeholder-not-used-at-runtime
+ENV SECRET_KEY=${SECRET_KEY}
+RUN python manage.py collectstatic --noinput
 
 RUN chown -R appuser:appuser /app
 

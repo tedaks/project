@@ -1,4 +1,5 @@
 import hmac
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -6,7 +7,7 @@ import orjson
 import redis.asyncio as aioredis
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -28,6 +29,14 @@ limiter = Limiter(key_func=get_remote_address)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- Startup ---
+    # Fail fast if required secrets are absent — surface the misconfiguration
+    # immediately rather than letting it surface as a cryptic 5xx to callers.
+    if not API_KEY:
+        raise RuntimeError(
+            "API_KEY environment variable is required but not set. "
+            "Set it in your .env file or container environment."
+        )
+
     async with engine.begin() as conn:
         # Prevent concurrent DDL race conditions across multiple Uvicorn workers
         await conn.execute(text("SELECT pg_advisory_xact_lock(1337)"))
@@ -48,10 +57,17 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
+_debug = os.environ.get("DEBUG", "0") == "1"
+
 app = FastAPI(
     title="Sensor API",
     description="FastAPI engine for the Sensor Dashboard demo",
     lifespan=lifespan,
+    # Disable interactive API docs in production to avoid exposing endpoint
+    # schemas, parameter names, and a live test console to the network.
+    docs_url="/docs" if _debug else None,
+    redoc_url="/redoc" if _debug else None,
+    openapi_url="/openapi.json" if _debug else None,
 )
 
 # Attach rate limiter state and its exception handler
@@ -70,12 +86,29 @@ app.add_middleware(
 
 
 def _verify_api_key(x_api_key: str = Header(default="")) -> None:
-    """FastAPI dependency to verify API key on protected endpoints."""
-    if not API_KEY:
-        raise HTTPException(status_code=500, detail="API_KEY not configured on server")
-    # Constant-time comparison to prevent timing attacks
+    """FastAPI dependency to verify API key on protected endpoints.
+
+    API_KEY is validated as non-empty at startup (lifespan), so by the time
+    any request reaches here it is guaranteed to be set.
+    Constant-time comparison prevents timing side-channel attacks.
+    """
     if not x_api_key or not hmac.compare_digest(x_api_key, API_KEY):
-        raise HTTPException(status_code=403, detail="Invalid API key")
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+# ---------- Global exception handler ----------
+_logger = logging.getLogger(__name__)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Catch-all handler: log the full traceback server-side and return a
+    structured JSON error to the client without leaking internal details."""
+    _logger.exception("Unhandled error on %s %s: %s", request.method, request.url, exc)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
 
 
 # ---------- Health ----------
@@ -106,6 +139,7 @@ async def create_reading(request: Request, payload: SensorReadingCreate):
         )
         result = await session.execute(stmt)
         await session.commit()
+        await app.state.redis.delete("stats_cache")
         return result.scalar_one()
 
 
@@ -186,6 +220,7 @@ async def get_stats(request: Request):
 @limiter.limit("10/minute")
 async def seed(request: Request):
     count = await seed_data()
+    await app.state.redis.delete("stats_cache")
     return {"seeded": count}
 
 

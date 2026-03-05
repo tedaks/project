@@ -10,9 +10,13 @@
     <!-- Preload fonts non-blocking -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
-          onload="this.onload=null;this.rel='stylesheet'">
-    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"></noscript>
+    <link rel="preload" as="style"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+        onload="this.onload=null;this.rel='stylesheet'">
+    <noscript>
+        <link rel="stylesheet"
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
+    </noscript>
 
     <!-- Tailwind CSS CDN (demo/development only; replace with CLI build for production) -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -43,8 +47,8 @@
 
     <!-- HTMX with SRI integrity check -->
     <script src="https://unpkg.com/htmx.org@2.0.2"
-            integrity="sha384-Y7hw+L/jvKeWIRRkqWYfPcvVxHzVzn5REgzbawhxAuQGwX1XWe70vji+VSeHOThJ"
-            crossorigin="anonymous"></script>
+        integrity="sha384-Y7hw+L/jvKeWIRRkqWYfPcvVxHzVzn5REgzbawhxAuQGwX1XWe70vji+VSeHOThJ"
+        crossorigin="anonymous"></script>
 
     <style>
         body {
@@ -93,7 +97,7 @@
 </head>
 
 <body class="h-full bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-200 transition-colors duration-200"
-      hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+    hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
     <!-- Navbar -->
     <nav
         class="border-b border-slate-200 bg-white/80 dark:border-slate-800/60 dark:bg-slate-950/80 backdrop-blur-xl sticky top-0 z-50 transition-colors duration-200">
@@ -121,9 +125,19 @@
                         </span>
                         Live
                     </span>
+                    {% if enable_mutations %}
                     <button hx-post="{% url 'clear_data' %}" hx-swap="none"
                         hx-on::before-request="this.innerHTML='⏳ Clearing…'; this.disabled=true"
-                        hx-on::after-request="this.innerHTML='✅ Cleared!'; this.disabled=false; htmx.trigger('#stats-cards','load'); htmx.trigger('#sensor-table','load'); setTimeout(()=>{this.innerHTML='<svg class=&quot;w-4 h-4 inline mr-1&quot; fill=&quot;none&quot; stroke=&quot;currentColor&quot; viewBox=&quot;0 0 24 24&quot;><path stroke-linecap=&quot;round&quot; stroke-linejoin=&quot;round&quot; stroke-width=&quot;2&quot; d=&quot;M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16&quot;/></svg> Clear Data'},1500)"
+                        hx-on::after-request="
+                          this.disabled=false;
+                          if (event.detail.successful) {
+                            this.innerHTML='✅ Cleared!';
+                            htmx.trigger('#stats-cards','load');
+                            htmx.trigger('#sensor-table','load');
+                          } else {
+                            this.innerHTML='❌ Failed';
+                          }
+                          setTimeout(()=>{this.innerHTML='<svg class=&quot;w-4 h-4 inline mr-1&quot; fill=&quot;none&quot; stroke=&quot;currentColor&quot; viewBox=&quot;0 0 24 24&quot;><path stroke-linecap=&quot;round&quot; stroke-linejoin=&quot;round&quot; stroke-width=&quot;2&quot; d=&quot;M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16&quot;/></svg> Clear Data'},2000)"
                         class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg
                               bg-rose-600/80 hover:bg-rose-500 text-white border border-rose-500/50
                               transition-all duration-200 hover:shadow-lg hover:shadow-rose-500/25
@@ -136,7 +150,16 @@
                     </button>
                     <button hx-post="{% url 'seed_data' %}" hx-swap="none"
                         hx-on::before-request="this.innerHTML='⏳ Seeding…'; this.disabled=true"
-                        hx-on::after-request="this.innerHTML='✅ Seeded!'; this.disabled=false; htmx.trigger('#stats-cards','load'); htmx.trigger('#sensor-table','load'); setTimeout(()=>{this.innerHTML='<svg class=&quot;w-4 h-4 inline mr-1&quot; fill=&quot;none&quot; stroke=&quot;currentColor&quot; viewBox=&quot;0 0 24 24&quot;><path stroke-linecap=&quot;round&quot; stroke-linejoin=&quot;round&quot; stroke-width=&quot;2&quot; d=&quot;M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15&quot;/></svg> Seed Data'},1500)"
+                        hx-on::after-request="
+                          this.disabled=false;
+                          if (event.detail.successful) {
+                            this.innerHTML='✅ Seeded!';
+                            htmx.trigger('#stats-cards','load');
+                            htmx.trigger('#sensor-table','load');
+                          } else {
+                            this.innerHTML='❌ Failed';
+                          }
+                          setTimeout(()=>{this.innerHTML='<svg class=&quot;w-4 h-4 inline mr-1&quot; fill=&quot;none&quot; stroke=&quot;currentColor&quot; viewBox=&quot;0 0 24 24&quot;><path stroke-linecap=&quot;round&quot; stroke-linejoin=&quot;round&quot; stroke-width=&quot;2&quot; d=&quot;M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15&quot;/></svg> Seed Data'},2000)"
                         class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg
                               bg-indigo-600 hover:bg-indigo-500 text-white
                               transition-all duration-200 hover:shadow-lg hover:shadow-indigo-500/25
@@ -147,6 +170,7 @@
                         </svg>
                         Seed Data
                     </button>
+                    {% endif %}
                     <select id="theme-select"
                         class="bg-white border border-slate-300 text-slate-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 px-3 dark:bg-slate-800 dark:border-slate-600 dark:placeholder-slate-400 dark:text-slate-200 dark:focus:ring-indigo-500 dark:focus:border-indigo-500 transition-colors duration-200 font-medium cursor-pointer">
                         <option value="system">💻 System</option>
