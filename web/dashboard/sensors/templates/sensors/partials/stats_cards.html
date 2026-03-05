@@ -15,7 +15,7 @@
                 {% elif stat.sensor_name == "humidity" %}💧
                 {% elif stat.sensor_name == "pressure" %}🔵
                 {% endif %}
-                {{ stat.sensor_name }}
+                {{ stat.sensor_name|capfirst }}
             </h3>
             <span
                 class="text-xs font-medium text-slate-700 bg-slate-100 dark:text-slate-400 dark:bg-slate-800/60 px-2 py-0.5 rounded-full border border-slate-200 dark:border-transparent">
